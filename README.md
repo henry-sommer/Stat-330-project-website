@@ -1,1 +1,2 @@
 # Stat-330-project-website
+Stat 330 project Group Members: Henry Sommer, Scott Warner, and Trevor Aragon Research Question: Can defensive statistics in football (interceptions, fumbles forced, yards against, etc.) predict total wins in a season? Data Source: Yurko, R. (2023, May 24). National Football League Team Statistics. SCORE Sports Data Repository. https://data.scorenetwork.org/football/nfl-team-statistics.html
