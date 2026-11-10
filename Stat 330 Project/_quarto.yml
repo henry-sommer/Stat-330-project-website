@@ -1,0 +1,19 @@
+
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "Our STAT 330 Project"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - href: proposal_template.qmd
+        text: Proposal Template
+      - href: AIUSE.qmd
+        text: AI Use
+
+format:
+  html:
+    theme: cosmo

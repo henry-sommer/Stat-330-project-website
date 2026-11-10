@@ -1,0 +1,177 @@
+---
+title: "Defense Wins Games"
+subtitle: "STAT 330 Portfolio Project Proposal"
+author: "Trevor Argon, Scott Warner, Henry Sommer"
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-fold: true
+    code-summary: "Show code"
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+## Question and audience
+
+**Our question**: Can defensive statistics in football (interceptions, fumbles forced, yards against, ect.) predict total wins in a season?
+
+**Audience:** Football players who are interested in knowing which things to focus on that actually influence the amount of games they win in a season. This is important because it can help them focus on the most important things and thereby see greater improvement.
+
+**Response:** Total wins in a given football season
+
+**Predictors:** Yards against, interceptions, fumbles forced, points against
+
+```{r}
+#load packages and read in data from online
+library(dplyr)
+library(readr)
+library(tidyverse)
+```
+
+## Data
+
+```{r}
+#load in data from website online (linked from Score Sports Data Repository)
+library(dplyr)
+library(readr)
+nfl_data_original <- read_csv(
+  "https://data.scorenetwork.org/data/nfl-team-statistics.csv"
+)
+nfl_dat <- nfl_data_original |>
+  filter(season %in% 2000:2022) |>
+  select(season, team, wins, losses, ties, score_differential)
+```
+
+```{r}
+
+library(nflreadr)
+
+# Team-level stats by season, with many defensive columns
+team_stats <- load_team_stats(seasons = 2000:2022, summary_level = "reg")
+team_stats
+```
+
+```{r}
+#combine data
+nfl_combined <- nfl_dat |>
+  left_join(team_stats, by = c("team", "season"))
+nfl_combined
+```
+
+Source link: <https://data.scorenetwork.org/data/nfl-team-statistics.csv>
+
+This was a link that we were given from "Score Sports Data Repository" (<https://data.scorenetwork.org>)
+
+The observational unit X and response vector y:
+
+```{r}
+#mutate data to create columns in our data set
+nfl_data <- nfl_data_original |>
+  mutate(fumbles_forced = defense_n_fumbles_lost_pass + defense_n_fumbles_lost_run,
+         yards_against = defense_total_yards_gained_pass + defense_total_yards_gained_run)
+#calculate X matrix
+Xmatrix <- nfl_data |>
+  select(defense_n_interceptions, fumbles_forced, yards_against, defense_completion_percentage)
+Xmatrix <- cbind(rep(1, nrow(Xmatrix)), Xmatrix)
+#calculate y matrix
+y <- nfl_data |>
+  select(wins)
+dim(Xmatrix)
+dim(y)
+```
+
+Our observational unit is the Xmatrix calculated above. It is basically what R will use (using its own built in ways) along with our response vector y, to estimate our $\hat\beta$s. Our Xmatrix has 765 rows and 5 columns. (n = 765, p = 4). Our response is y. We can see from above that our response is 765 by 1.
+
+Our candidate predictors are "defense_n_interceptions", "fumbles_forced", "yards_against", and "defense_completion_percentage". Our response is "wins".
+
+The data were likely collected game by game and compiled by Score Sports Data Repository or some other organization later on. This is an observational study and not an experiment.
+
+Evidence that the data can answer the question:
+
+(Look for an R\^2 that is fairly high to see if we can continue with the predictors and response we have chosen)
+
+```{r}
+#create lm model so we can check our R^2
+nfl_data_mod <- lm(wins ~ defense_n_interceptions + fumbles_forced + yards_against + points_allowed, data = nfl_data)
+summary(nfl_data_mod)
+```
+
+Our $R^2$ of 0.4793 isn't exceptionally high, but it seems to be sufficient evidence that our predictors can explain the amount of wins in a season at least to some degree.
+
+**Permissions:** Score Sports Data Repository actively encourages people to use their data. On the website we found this on the home page: "The [SCORE Network](#0) Sports Data Repository curates interesting datasets across a variety of sports for use in statistics and data science education". Since we are using this data for data science education we will assume we can proceed.
+
+**Privacy concerns:** Since NFL players have consented to be seen on television, they likely have agreed that the statistics of their games can also be shared at large. Therefore we see privacy concerns.
+
+**Measurement concerns:** "Score Sports Data Repository" is a well trusted website and likely has standards in place that assure the data they recommend on their website is accurate.
+
+The other concerns clearly do not apply to out dataset.
+
+## One useful first look
+
+```{r}
+# Create one figure that directly informs your research question.
+nfl_data |>
+  pivot_longer(
+    cols = c(defense_n_interceptions, fumbles_forced, yards_against, points_allowed),
+    names_to = "predictor",
+    values_to = "value"
+  ) |>
+  ggplot(aes(x = value, y = wins, color = predictor)) +
+  geom_point() +
+  facet_wrap(~ predictor, scales = "free_x") +
+  labs(
+    x = NULL,
+    y = "# of Wins in Season",
+    title = "Wins Compared With Each Predictor"
+  )
+# Include a useful title, labels, units, and accessible colors.
+```
+
+**Patterns?**
+
+There really isn't much of a non linear pattern in any of the four plots. Although our data are unfortunately not very heavily correlated with the response, at least the small correlation that is visible is definitely linear instead of some other pattern. The predictor that is the most correlated with our response is definitely "points_allowed" based on the plots.
+
+## Baseline model
+
+```{r}
+#We will use the same model I chose from above to test R^2
+nfl_data_mod <- lm(wins ~ defense_n_interceptions + fumbles_forced + yards_against + points_allowed, data = nfl_data)
+summary(nfl_data_mod)
+
+```
+
+We feel like the model is a good starting point because we pulled out as many defensive statistics as we could from our original data set. We ended with an R\^2 of 0.4793. Later on we may try to find more data that corresponds with our observations that we can add to our data set to help with the low initial correlation.
+
+**Coefficient interpretation**
+
+We will interpret our $\hat\beta$ for defense_n_interceptions. It is 0.0793 and means that, holding fumbles_forced, yards_against, and points_allowed constant, for an additional single interception on the season, number of wins predicted on the season is estimated to increase by 0.0793. The uncertainty here is that our p-value isn't incredibly low with a $t$ score of only 4.3. We also do not yet know if our model even passes all of the LINE assumptions.
+
+**Limitation**
+
+One limitation is that, in general, our data do not seem very correlated with our predictor. The spread of fumbles forced and wins, for example, is hardly correlated.
+
+**Pattern**
+
+There are no non-linear patterns visible from the scatter plots, however.
+
+**Improvement**
+
+An opportunity for improvement would be to find other data that correspond to the observations in our data sat so that we can increase the predictive power of our model and come up with some actually useful results.
+
+## Where the analysis could go
+
+1.  **Possible direction:** Cross Validation: It will help us see how well our data can predict run differential outside of our data. We will divide our data into test and training data and do the CV loop and evaluate average RMSEs.
+
+2.  **Possible direction:** Selection and Shrinkage: Some variables may be multi-collinear and we want to see if we can shrink our data and limit the variance on our predictor estimates. We will see what Ridge and LASSO suggest.
+
+## AI disclosure and sources
+
+We used AI to help explain what some of the variables in the dataset meant and which ones would be most beneficial to us. Additionally, we used AI to help refine our statements in some of the questions and code.
+
+Citation:\
+Yurko, R. (2023, May 24). *National Football League Team Statistics*. SCORE Sports Data Repository. <https://data.scorenetwork.org/football/nfl-team-statistics.html>
+
+\

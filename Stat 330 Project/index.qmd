@@ -1,0 +1,37 @@
+
+---
+title: "Our Project Title"
+subtitle: "BYU STAT 330 Group Project"
+format:
+  html:
+    theme: cosmo
+    toc: false
+---
+
+
+**Welcome to our STAT 330 group project**
+
+## Group Members
+
+- Henry Sommer
+- Trevor Aragon
+- Scott Warner
+
+## Research Question
+
+Can defensive statistics in football (interceptions, fumbles forced, yards against, ect.) predict total wins in a season?
+
+## Data Source
+
+We are using NFL data from the SCORE Sports Data Repository. We are also using data from R studio in the "nflreadr" package.
+
+## Project Pages
+
+Here are the difference sections of our project so far:
+
+- [Case Study](proposal_template.qmd)
+- [AI Use and Verification](AIUSE.qmd)
+
+---
+
+*Brigham Young University | STAT 330*

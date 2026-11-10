@@ -1,0 +1,204 @@
+---
+title: "AI-USE.qmd"
+format: html
+editor: visual
+author: "Henry Sommer, Trevor Aragon, Scott Warner"
+---
+
+**AI system and date:** Claude (11/5/2026)
+
+**Our question**: Can defensive statistics in football (interceptions, fumbles forced, yards against, ect.) predict total wins in a season?
+
+**Model:**
+
+$$
+Wins_i = \beta_0 + \beta_1(Sacks)_i + \beta_2(Yards Against)_i + \beta_3(Fumbles Forced)_i + \beta_5(Defense Interceptions)_i + \beta_6(DPD)_i + \epsilon_i
+, \epsilon_i \overset{iid}{\sim} N(0,\sigma^2)
+$$
+
+Fitted:
+
+$$
+\widehat{Wins_i} = \hat\beta_0 + \hat\beta_1(Sacks)_i + \hat\beta_2(Yards Against)_i + \hat\beta_3(Fumbles Forced)_i + \hat\beta_5(Defense Interceptions)_i + \hat\beta_6(DPD)_i
+$$
+
+**Baseline Result:**
+
+```{r}
+#| echo: false
+library(dplyr)
+library(readr)
+library(nflreadr)
+#read in data that includes the wins and losses from online
+nfl_data_original <- read_csv(
+  "https://data.scorenetwork.org/data/nfl-team-statistics.csv"
+)
+#filter to just get the things we may be interested in
+nfl_dat <- nfl_data_original |>
+  filter(season %in% 2000:2022) |>
+  select(season, team, wins, losses, ties, score_differential, defense_total_yards_gained_pass, defense_total_yards_gained_run)
+#read in more NFL stats from an R package
+library(nflreadr)
+team_stats <- load_team_stats(seasons = 2000:2022, summary_level = "reg")
+#combine the data using a left_join() (everything already matched perfectly)
+nfl_combined <- nfl_dat |>
+  left_join(team_stats, by = c("team", "season")) |>
+  select(season, team, wins, losses, ties, score_differential, passing_yards, rushing_yards, def_tackles_for_loss, def_fumbles_forced, def_sacks, def_interceptions, def_interception_yards, def_pass_defended, def_tds, def_qb_hits, defense_total_yards_gained_pass, defense_total_yards_gained_run) |>
+  mutate(yards_against = defense_total_yards_gained_pass + defense_total_yards_gained_run) |>
+  select(-defense_total_yards_gained_pass, -defense_total_yards_gained_run)
+```
+
+```{r}
+nfl_mod_final <- lm(wins ~ def_sacks + yards_against + def_fumbles_forced + def_interceptions + def_pass_defended, data = nfl_combined)
+summary(nfl_mod_final)
+```
+
+**Limitation/Opportunity:**
+
+The limitation we wanted to address with AI is our independence problem. Our data have each NFL team repeated 22 times over 22 seasons. AI suggested a way to test if that is going to be a problem.
+
+## Our exact AI prompt
+
+> "I am working on a group project for stat 330 at BYU. Here is the data we are using <https://data.scorenetwork.org/data/nfl-team-statistics.csv>\
+> nfl_data \<- nfl_data_original \|\>\
+> mutate(fumbles_forced = defense_n_fumbles_lost_pass + defense_n_fumbles_lost_run,\
+> yards_against = defense_total_yards_gained_pass + defense_total_yards_gained_run)\
+> i did this to the data and then this\
+> nfl_data_mod \<- lm(wins \~ defense_n_interceptions + fumbles_forced + yards_against + points_allowed, data = nfl_data)\
+> here is the summary:
+>
+> ```         
+> Call:
+> lm(formula = wins ~ defense_n_interceptions + fumbles_forced + 
+>     yards_against + points_allowed, data = nfl_data)
+>
+> Residuals:
+>     Min      1Q  Median      3Q     Max 
+> -6.3106 -1.6347  0.0287  1.4059  6.8811 
+>
+> Coefficients:
+>                           Estimate Std. Error t value Pr(>|t|)    
+> (Intercept)             12.2190484  0.9844245  12.412  < 2e-16 ***
+> defense_n_interceptions  0.0793038  0.0184934   4.288 2.03e-05 ***
+> fumbles_forced           0.0491149  0.0251381   1.954   0.0511 .  
+> yards_against            0.0016218  0.0002272   7.138 2.22e-12 ***
+> points_allowed          -0.0412564  0.0022428 -18.395  < 2e-16 ***
+> ---
+> Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+>
+> Residual standard error: 2.233 on 760 degrees of freedom
+> Multiple R-squared:  0.4793,    Adjusted R-squared:  0.4766 
+> F-statistic: 174.9 on 4 and 760 DF,  p-value: < 2.2e-16
+> ```
+>
+> What recommendations do you have to make our model better considering the question we are asking is: Can defensive statistics in football (interceptions, fumbles forced, yards against, ect.) predict total wins in a season? Also, recommend to us one beyond-course extension that we can use to test or model. Our course is Stat 330 at byu so just something that is not part of the content of this class."
+
+> We do lasso and ridge in stat 330. Give us another suggestion for the extension
+
+## Our decisions
+
+- **Accepted** — These are the AI suggestions we liked:
+
+  Our AI talked about some of the weaknesses of our model. It mentioned that we should check the VIFs of our predictors to see if we had multicollinearity, check our observations to see if we had any with high Cook's distance, and a few other things we have written out in code below:
+
+```{r}
+#calculate vifs for all predictors
+car::vif(nfl_mod_final)
+#calculate cooks distance for all observations
+Cook = cooks.distance(nfl_mod_final)
+#display the three observations with the highest Cook's distance
+nfl_combined[c(34, 393, 123), ]
+  
+```
+
+Another thing we wanted to check was the RMSE for our base model:
+
+```{r}
+#calculate RMSE for base model
+sqrt(mean(residuals(nfl_mod_final)^2))
+```
+
+We also ran a Cross Validation test to test whether this new model with the combined datasets predicts outside of itself better, which it does.
+
+```{r}
+#create the cv_rmse function
+library(rsample)
+cv_rmse <- function(formula, data, folds) {
+  results <- lapply(seq_len(nrow(folds)), function(i) {
+    train <- analysis(folds$splits[[i]])
+    test <- assessment(folds$splits[[i]])      #maybe somebody add some comments about what is going on here
+    fit <- lm(formula, data = train)
+    predictions <- predict(fit, newdata = test)
+    sqrt(mean((test$wins - predictions)^2))
+  })
+  mean(unlist(results))
+}
+folds <- vfold_cv(nfl_combined, v = 5, repeats = 20)
+
+cv_results <- data.frame(
+  Model = "Model 1",
+  CV_RMSE = cv_rmse(formula(nfl_mod_final), nfl_combined, folds)
+)
+#display results
+cv_results
+```
+
+- **Changed** — How we adapted our data to fit our focus:
+
+Our AI did not seem satisfied with our predictors and data in general. So we decided to combine two datasets together so we could have more predictors that could potentially help explain our response, "wins". We didn't want to leave any important defensive statistics out at the beginning. That is why the model above is slightly different from the one in our AI prompt.
+
+- **Rejected or corrected** — AI suggestions we didn't like:
+
+Our AI seemed very convinced that we had a serious multicollinearity problem. Looking at the VIFs, however, there wasn't as big of an issue as AI predicted. AI also suggested adding other defense variables. Unfortunately, including too many of the variables would make our analysis too complicated and unfocused.
+
+**Connection to the final case study:** 
+
+Our observations have each football team 23 different times—because of seasons from 2000-2022. Since our AI was so concerned about independence, it suggested that we use a **"Linear Mixed-Effects Model"**. This model will give a random intercept for each time out of a normal distribution. AI says this model will mitigate the risk of non-independence between our observations. This extension will appear on our final page where we check the "LINE" assumptions since it will help us verify the independence assumption.
+
+## Independent verification of our chosen extension
+
+1.  **Check** — Here is the test we ran with AI's suggestion of a Linear Mixed-Effects Model:
+
+```{r}
+library(lme4)
+
+mixed_mod <- lmer(wins ~ def_sacks + yards_against + def_fumbles_forced + def_interceptions + def_pass_defended + (1 | team), data = nfl_combined)
+summary(mixed_mod)
+```
+
+According to our AI, having a 0.8313 team variance and a 5.5012 residual variance, we can compute: ICC = 0.8313 / (0.8313 + 5.5012) ≈ 0.13. This means that about 13% of the leftover variation in wins (after accounting for the defensive stats) is stable differences between teams. AI tells us that the other 87% is season-to-season noise.
+
+**Comparison** — We just saw that the independence assumption is violated, but not horribly. To test how practical this difference is, AI suggested this code:
+
+```{r}
+#compare beta hats of the old and new model
+cbind(lm_se = summary(nfl_mod_final)$coefficients[, 2],
+      lmer_se = summary(mixed_mod)$coefficients[, 2])
+```
+
+Since the beta hats of both models are nearly the same, we are probably okay to just use our original model for the final project. Looking at SEEs would also be important for the final project.
+
+2.  **2nd check** — This time we use the "Durbin-Watson Test."
+
+For our second check of our Linear Mixed-effects Model we would like to do something called a "Durbin-Watson Test". This is a test that can also look at independence. Since we concluded that independence wasn't a big issue in part one, we want to check how accurate that claim is against another method. Here are the hypotheses of the Durbin-Watson test:
+
+$H_0$: There is no correlation between the residuals (the residuals are independent)
+
+$H_A$: The residuals are autocorrelated
+
+```{r}
+library(car)
+durbinWatsonTest(nfl_mod_final)
+```
+
+Here we can see that we have a fairly high p-value of 0.11. That means that we don't have much evidence to conclude that there is no correlation between the residuals. But the p-value also isn't alarmingly high. This follows very closely with how things turned out using the linear mixed model. We will definitely have to look into this more and address it in the final project.
+
+Citation: Statology. (n.d.). Durbin-Watson test in R. https://www.statology.org/durbin-watson-test-r/
+
+## Remaining limitation
+
+One major limitation is we are not sure if our data has combined together correctly. Some of the rows are left our when we run certain tests. We will need to address this as we work on the final project.
+
+## Other AI use, if any
+
+Lots of debugging for errors and quick questions about how to set up code and interpret.
